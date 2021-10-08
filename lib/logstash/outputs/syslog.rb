@@ -1,9 +1,9 @@
 # encoding: utf-8
-require "logstash/outputs/base"
-require "logstash/namespace"
-require "date"
-require "logstash/codecs/plain"
 
+require 'logstash/outputs/base'
+require 'logstash/namespace'
+require 'date'
+require 'logstash/codecs/plain'
 
 # Send events to a syslog server.
 #
@@ -15,132 +15,123 @@ require "logstash/codecs/plain"
 # your messages don't have a `message` field or if you for some other
 # reason want to change the emitted message, modify the `message`
 # configuration option.
+
 class LogStash::Outputs::Syslog < LogStash::Outputs::Base
-  config_name "syslog"
+  config_name 'syslog'
 
-  FACILITY_LABELS = [
-    "kernel",
-    "user-level",
-    "mail",
-    "daemon",
-    "security/authorization",
-    "syslogd",
-    "line printer",
-    "network news",
-    "uucp",
-    "clock",
-    "ftp",
-    "ntp",
-    "log audit",
-    "log alert",
-    "local0",
-    "local1",
-    "local2",
-    "local3",
-    "local4",
-    "local5",
-    "local6",
-    "local7",
+  FACILITY_LABELS = %w[
+    kernel
+    user-level
+    mail
+    daemon
+    security/authorization
+    syslogd
+    line printer
+    network news
+    uucp
+    clock
+    ftp
+    ntp
+    log audit
+    log alert
+    local0
+    local1
+    local2
+    local3
+    local4
+    local5
+    local6
+    local7
   ]
 
-  SEVERITY_LABELS = [
-    "emergency",
-    "alert",
-    "critical",
-    "error",
-    "warning",
-    "notice",
-    "informational",
-    "debug",
-  ]
+  SEVERITY_LABELS = %w[emergency alert critical error warning notice informational debug]
 
   # syslog server address to connect to
-  config :host, :validate => :string, :required => true
+  config :host, validate: :string, required: true
 
   # syslog server port to connect to
-  config :port, :validate => :number, :required => true
+  config :port, validate: :number, required: true
+
+  # when connection fails, do we want to retry (only for tcp)
+  config :retry_tcp, validate: :boolean, default: true
 
   # when connection fails, retry interval in sec.
-  config :reconnect_interval, :validate => :number, :default => 1
+  config :reconnect_interval, validate: :number, default: 1
 
   # syslog server protocol. you can choose between udp, tcp and ssl/tls over tcp
-  config :protocol, :validate => ["tcp", "udp", "ssl-tcp"], :default => "udp"
+  config :protocol, validate: %w[tcp udp ssl-tcp], default: 'udp'
 
   # Verify the identity of the other end of the SSL connection against the CA.
-  config :ssl_verify, :validate => :boolean, :default => false
+  config :ssl_verify, validate: :boolean, default: false
 
   # The SSL CA certificate, chainfile or CA path. The system CA path is automatically included.
-  config :ssl_cacert, :validate => :path
+  config :ssl_cacert, validate: :path
 
   # SSL certificate path
-  config :ssl_cert, :validate => :path
+  config :ssl_cert, validate: :path
 
   # SSL key path
-  config :ssl_key, :validate => :path
+  config :ssl_key, validate: :path
 
   # SSL key passphrase
-  config :ssl_key_passphrase, :validate => :password, :default => nil
+  config :ssl_key_passphrase, validate: :password, default: nil
 
   # use label parsing for severity and facility levels
   # use priority field if set to false
-  config :use_labels, :validate => :boolean, :default => true
+  config :use_labels, validate: :boolean, default: true
 
   # syslog priority
   # The new value can include `%{foo}` strings
   # to help you build a new value from other parts of the event.
-  config :priority, :validate => :string, :default => "%{syslog_pri}"
+  config :priority, validate: :string, default: '%{syslog_pri}'
 
   # facility label for syslog message
   # default fallback to user-level as in rfc3164
   # The new value can include `%{foo}` strings
   # to help you build a new value from other parts of the event.
-  config :facility, :validate => :string, :default => "user-level"
+  config :facility, validate: :string, default: 'user-level'
 
   # severity label for syslog message
   # default fallback to notice as in rfc3164
   # The new value can include `%{foo}` strings
   # to help you build a new value from other parts of the event.
-  config :severity, :validate => :string, :default => "notice"
+  config :severity, validate: :string, default: 'notice'
 
   # source host for syslog message. The new value can include `%{foo}` strings
   # to help you build a new value from other parts of the event.
-  config :sourcehost, :validate => :string, :default => "%{host}"
+  config :sourcehost, validate: :string, default: '%{host}'
 
   # application name for syslog message. The new value can include `%{foo}` strings
   # to help you build a new value from other parts of the event.
-  config :appname, :validate => :string, :default => "LOGSTASH"
+  config :appname, validate: :string, default: 'LOGSTASH'
 
   # process id for syslog message. The new value can include `%{foo}` strings
   # to help you build a new value from other parts of the event.
-  config :procid, :validate => :string, :default => "-"
+  config :procid, validate: :string, default: '-'
 
   # message text to log. The new value can include `%{foo}` strings
   # to help you build a new value from other parts of the event.
-  config :message, :validate => :string, :default => "%{message}"
+  config :message, validate: :string, default: '%{message}'
 
   # message id for syslog message. The new value can include `%{foo}` strings
   # to help you build a new value from other parts of the event.
-  config :msgid, :validate => :string, :default => "-"
+  config :msgid, validate: :string, default: '-'
 
   # syslog message format: you can choose between rfc3164 or rfc5424
-  config :rfc, :validate => ["rfc3164", "rfc5424"], :default => "rfc3164"
+  config :rfc, validate: ['rfc3164', 'rfc5424'], default: 'rfc3164'
 
   def register
     @client_socket = nil
 
-    if ssl?
-      @ssl_context = setup_ssl
-    end
-    
+    ssl? && @ssl_context = setup_ssl
+
     if @codec.instance_of? LogStash::Codecs::Plain
-      if @codec.config["format"].nil?
-        @codec = LogStash::Codecs::Plain.new({"format" => @message})
-      end
+      @codec.config['format'].nil? && @codec = LogStash::Codecs::Plain.new({ 'format' => @message })
     end
     @codec.on_event(&method(:publish))
 
     # use instance variable to avoid string comparison for each event
-    @is_rfc3164 = (@rfc == "rfc3164")
+    @is_rfc3164 = (@rfc == 'rfc3164')
   end
 
   def receive(event)
@@ -161,11 +152,11 @@ class LogStash::Outputs::Syslog < LogStash::Outputs::Base
       priority = (facility_code * 8) + severity_code
     else
       priority = Integer(event.sprintf(@priority)) rescue 13
-      priority = 13 if (priority < 0 || priority > 191)
+      priority = 13 if priority.negative? || priority > 191
     end
 
     if @is_rfc3164
-      timestamp = event.sprintf("%{+MMM dd HH:mm:ss}")
+      timestamp = event.sprintf('%{+MMM dd HH:mm:ss}')
       syslog_msg = "<#{priority.to_s}>#{timestamp} #{sourcehost} #{appname}[#{procid}]: #{message}"
     else
       msgid = event.sprintf(@msgid)
@@ -180,8 +171,16 @@ class LogStash::Outputs::Syslog < LogStash::Outputs::Base
       # We don't expect udp connections to fail because they are stateless, but ...
       # udp connections may fail/raise an exception if used with localhost/127.0.0.1
       return if udp?
+      return unless retry_tcp?
 
-      @logger.warn("syslog " + @protocol + " output exception: closing, reconnecting and resending event", :host => @host, :port => @port, :exception => e, :backtrace => e.backtrace, :event => event)
+      @logger.warn(
+        'syslog ' + @protocol + ' output exception: closing, reconnecting and resending event',
+        host: @host,
+        port: @port,
+        exception: e,
+        backtrace: e.backtrace,
+        event: event
+      )
       @client_socket.close rescue nil
       @client_socket = nil
 
@@ -192,12 +191,16 @@ class LogStash::Outputs::Syslog < LogStash::Outputs::Base
 
   private
 
+  def retry_tcp?
+    @retry_tcp == true
+  end
+
   def udp?
-    @protocol == "udp"
+    @protocol == 'udp'
   end
 
   def ssl?
-    @protocol == "ssl-tcp"
+    @protocol == 'ssl-tcp'
   end
 
   def connect
@@ -212,8 +215,11 @@ class LogStash::Outputs::Syslog < LogStash::Outputs::Base
         begin
           socket.connect
         rescue OpenSSL::SSL::SSLError => ssle
-          @logger.error("SSL Error", :exception => ssle,
-                        :backtrace => ssle.backtrace)
+          @logger.error(
+            'SSL Error',
+            exception: ssle,
+            backtrace: ssle.backtrace
+          )
           # NOTE(mrichar1): Hack to prevent hammering peer
           sleep(5)
           raise
@@ -224,10 +230,10 @@ class LogStash::Outputs::Syslog < LogStash::Outputs::Base
   end
 
   def setup_ssl
-    require "openssl"
+    require 'openssl'
     ssl_context = OpenSSL::SSL::SSLContext.new
     ssl_context.cert = OpenSSL::X509::Certificate.new(File.read(@ssl_cert))
-    ssl_context.key = OpenSSL::PKey::RSA.new(File.read(@ssl_key),@ssl_key_passphrase)
+    ssl_context.key = OpenSSL::PKey::RSA.new(File.read(@ssl_key), @ssl_key_passphrase)
     if @ssl_verify
       cert_store = OpenSSL::X509::Store.new
       # Load the system default certificate path to the store
@@ -238,7 +244,7 @@ class LogStash::Outputs::Syslog < LogStash::Outputs::Base
         cert_store.add_file(@ssl_cacert)
       end
       ssl_context.cert_store = cert_store
-      ssl_context.verify_mode = OpenSSL::SSL::VERIFY_PEER|OpenSSL::SSL::VERIFY_FAIL_IF_NO_PEER_CERT
+      ssl_context.verify_mode = OpenSSL::SSL::VERIFY_PEER | OpenSSL::SSL::VERIFY_FAIL_IF_NO_PEER_CERT
     end
     ssl_context
   end
