@@ -1,3 +1,6 @@
+## 3.0.6
+  - Allow tcp syslog exchange to drop message instead of retrying.
+
 ## 3.0.5
   - Docs: Set the default_codec doc attribute.
 
